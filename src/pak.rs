@@ -1,6 +1,3 @@
-use crate::common::{BUFFER_SIZE, FORMAT_VERSION, MAGIC_NUMBER};
-use crate::metadata::XpakMetadata;
-
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use std::io::{self, Read, Write, BufReader, BufWriter};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -12,10 +9,14 @@ use std::sync::Arc;
 use std::fs::File;
 use chrono::Utc;
 
+use crate::common::{BUFFER_SIZE, FORMAT_VERSION, MAGIC_METADATA_END, MAGIC_NUMBER};
+use crate::metadata::{XpakMetadata, FileInfo};
+
 pub fn pack_files(
     input: &str, 
     output: &str, 
     flat: bool, 
+    description: Option<&str>,
     metadata: Option<&str>,
     running: Arc<AtomicBool>
 ) -> io::Result<()> {
@@ -43,6 +44,11 @@ pub fn pack_files(
 
     // 创建基础metadata
     let mut xpak_meta = XpakMetadata::new(files.len() as u32, total_size);
+
+    // 如果有提供的描述，设置描述
+    if let Some(desc) = description {
+        xpak_meta.description = Some(desc.to_string());
+    }
 
     // 如果有提供的metadata，验证并合并它
     if let Some(meta) = metadata {
@@ -93,6 +99,17 @@ pub fn pack_files(
         total_size,
         description: metadata.map(|s| s.to_string()),
         common: HashMap::new(),
+        files: files.iter().map(|entry| {
+            let path = entry.path();
+            let relative_path = path.strip_prefix(input_path).unwrap();
+            let file_path = if flat {
+                PathBuf::from(path.file_name().unwrap())
+            } else {
+                relative_path.to_path_buf()
+            };
+            
+            FileInfo::new(file_path, entry.metadata().unwrap().len())
+        }).collect(),
     };
 
     // 合并metadata
@@ -108,6 +125,9 @@ pub fn pack_files(
     let metadata_bytes = serde_json::to_vec(&metadata_content)?;
     pak_file.write_all(&(metadata_bytes.len() as u32).to_le_bytes())?;
     pak_file.write_all(&metadata_bytes)?;
+
+    // 添加metadata结束标记（8字节）
+    pak_file.write_all(&MAGIC_METADATA_END)?;
 
     // 写入文件数量
     pak_file.write_all(&(files.len() as u32).to_le_bytes())?;

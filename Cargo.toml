@@ -1,6 +1,6 @@
 [package]
 name = "xpak"
-version = "0.0.1"
+version = "0.1.1"
 edition = "2021"
 
 [dependencies]
@@ -12,3 +12,4 @@ serde_json = "1.0"
 base64 = "0.22.1"
 walkdir = "2.4"
 ctrlc = "3.4"
+console = "0.15.7"

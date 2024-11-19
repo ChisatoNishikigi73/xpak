@@ -2,12 +2,13 @@ mod pak;
 mod unpak;
 mod metadata;
 mod common;
+mod view_pak_structure;
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use clap::{Parser, Subcommand};
+use std::sync::Arc;
 use std::io;
 use ctrlc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -27,6 +28,8 @@ enum Commands {
         output: String,
         #[arg(long, short, value_name = "FLAT", help = "是否扁平化打包（不保留目录结构）")]
         flat: bool,
+        #[arg(long, short, value_name = "DESCRIPTION", help = "描述信息")]
+        description: Option<String>,
         #[arg(long, short, value_name = "METADATA", help = "元数据信息（JSON或Base64编码的JSON）")]
         metadata: Option<String>,
     },
@@ -49,10 +52,36 @@ enum Commands {
         /// 输入文件路径
         #[arg(value_name = "INPUT_FILE")]
         input: String,
+        #[arg(long, short, value_name = "FILES", help = "是否显示文件列表")]
+        files: bool,
+    },
+    /// 重新计算Metadata
+    #[command(arg_required_else_help = true)]
+    Update {
+        /// 输入文件路径
+        #[arg(value_name = "INPUT_FILE")]
+        input: String,
+        #[arg(long, short, value_name = "DESCRIPTION", help = "更新描述信息")]
+        description: Option<String>,
+        #[arg(long, short, value_name = "METADATA", help = "更新元数据信息（JSON或Base64编码的JSON）")]
+        metadata: Option<String>,
+        /// 重新生成所有元数据信息
+        #[arg(long, short, help = "重新生成所有元数据信息")]
+        all: bool,
     },
     /// 列出包内文件
     #[command(arg_required_else_help = true)]
     List {
+        /// 输入文件路径
+        #[arg(value_name = "INPUT_FILE")]
+        input: String,
+        /// 重新扫描文件内容而不是使用metadata
+        #[arg(long, short)]
+        recheck: bool,
+    },
+    /// 查看pak结构
+    #[command(arg_required_else_help = true, name = "view")]
+    ViewStructure {
         /// 输入文件路径
         #[arg(value_name = "INPUT_FILE")]
         input: String,
@@ -72,19 +101,26 @@ fn main() -> io::Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Pak { input, output, flat, metadata } => {
-            pak::pack_files(&input, &output, flat, metadata.as_deref(), running)?;
+        Commands::Pak { input, output, flat, description, metadata } => {
+            pak::pack_files(&input, &output, flat, description.as_deref(), metadata.as_deref(), running)?;
             println!("操作已完成");
         }
         Commands::Unpak { input, output, files } => {
             unpak::unpack_files(&input, &output, files.as_deref(), running)?;
             println!("操作已完成");
         }
-        Commands::Metadata { input } => {
-            metadata::display_metadata(&input)?;
+        Commands::Metadata { input, files } => {
+            metadata::display_metadata(&input, files)?;
         }
-        Commands::List { input } => {
-            unpak::list_files(&input)?;
+        Commands::List { input, recheck } => {
+            unpak::list_files(&input, recheck)?;
+        }
+        Commands::ViewStructure { input } => {
+            view_pak_structure::view_structure(&input)?;
+        }
+        Commands::Update { input, description, metadata, all } => {
+            metadata::update_metadata(&input, description.as_deref(), metadata.as_deref(), all)?;
+            println!("元数据更新完成");
         }
     }
 
